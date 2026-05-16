@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/Users/Josh/.local/bin/uv run *)",
+      "Bash(/c/Users/Josh/.local/bin/uv add *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/health)"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+services:
+  api:
+    image: ${IMAGE:-ghcr.io/OWNER/my-ynab:latest}
+    restart: unless-stopped
+    env_file: /opt/my-ynab/.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
