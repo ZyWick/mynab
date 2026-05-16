@@ -60,11 +60,13 @@ jobs:
             --secret-id "$PROD_SECRET_ID" \
             --query SecretString --output text)
           # Convert JSON {"K":"V"} to KEY=VALUE lines, base64 for safe transport via SSM
-          ENV_B64=$(echo "$SECRET_JSON" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-print("\n".join(f"{k}={v}" for k,v in d.items()))
-' | base64 -w0)
+          ENV_B64=$(echo "$SECRET_JSON" | python3 - <<'EOF' | base64 -w0
+            import json,sys
+            
+            d = json.load(sys.stdin)
+            print("\n".join(f"{k}={v}" for k,v in d.items()))
+            EOF
+            )
           echo "::add-mask::$ENV_B64"
           echo "env_b64=$ENV_B64" >> "$GITHUB_OUTPUT"
 
@@ -89,7 +91,8 @@ print("\n".join(f"{k}={v}" for k,v in d.items()))
               \"echo ${COMPOSE_B64} | base64 -d > docker-compose.prod.yml\",
               \"umask 077 && echo ${ENV_B64} | base64 -d > .env\",
               \"aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}\",
-              \"IMAGE=${IMAGE_URI} docker compose -f docker-compose.prod.yml up -d --pull always\",
+              \"IMAGE=${IMAGE_URI}\",
+              \"docker compose -f docker-compose.prod.yml up -d --pull always\",
               \"docker image prune -f\"
             ]" \
             --query "Command.CommandId" --output text)
