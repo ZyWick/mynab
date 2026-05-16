@@ -12,6 +12,7 @@ concurrency:
 env:
   AWS_REGION: ap-southeast-2
   ECR_REPOSITORY: my-ynab
+  PROD_SECRET_ID: my-ynab/prod
 
 permissions:
   id-token: write    # required for OIDC
@@ -51,20 +52,43 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Fetch prod secret
+        id: secret
+        run: |
+          set -euo pipefail
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id "$PROD_SECRET_ID" \
+            --query SecretString --output text)
+          # Convert JSON {"K":"V"} to KEY=VALUE lines, base64 for safe transport via SSM
+          ENV_B64=$(echo "$SECRET_JSON" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print("\n".join(f"{k}={v}" for k,v in d.items()))
+' | base64 -w0)
+          echo "::add-mask::$ENV_B64"
+          echo "env_b64=$ENV_B64" >> "$GITHUB_OUTPUT"
+
       - name: Deploy via SSM
         env:
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           IMAGE_URI: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha }}
+          ENV_B64: ${{ steps.secret.outputs.env_b64 }}
         run: |
           set -euo pipefail
+          COMPOSE_B64=$(base64 -w0 docker-compose.prod.yml)
+          REGISTRY="${IMAGE_URI%%/*}"
+
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "deploy my-ynab ${GITHUB_SHA::7}" \
             --parameters "commands=[
               \"set -euo pipefail\",
+              \"mkdir -p /opt/my-ynab\",
               \"cd /opt/my-ynab\",
-              \"aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${IMAGE_URI%%/*}\",
+              \"echo ${COMPOSE_B64} | base64 -d > docker-compose.prod.yml\",
+              \"umask 077 && echo ${ENV_B64} | base64 -d > .env\",
+              \"aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${REGISTRY}\",
               \"IMAGE=${IMAGE_URI} docker compose -f docker-compose.prod.yml up -d --pull always\",
               \"docker image prune -f\"
             ]" \
