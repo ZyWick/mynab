@@ -60,7 +60,8 @@ jobs:
             --secret-id "$PROD_SECRET_ID" \
             --query SecretString --output text)
           # Convert JSON {"K":"V"} to KEY=VALUE lines, base64 for safe transport via SSM
-          ENV_B64=$(echo "$SECRET_JSON" | python3 - <<'EOF' | base64 -w0
+            ENV_B64=$(
+              echo "$SECRET_JSON" | python3 - <<'EOF' | base64 -w0
             import json,sys
             
             d = json.load(sys.stdin)
